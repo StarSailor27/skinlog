@@ -1,0 +1,19 @@
+{
+  "name": "SkinLog",
+  "short_name": "SkinLog",
+  "description": "Daily face snapshot log (front / left 45 / right 45) with album + timeline compare. Local-only.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0d1117" />
+<link rel="manifest" href="manifest.json" />
+<title>SkinLog</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#151b23; --text:#e6edf3; --muted:#8b949e;
+    --line:#30363d; --accent:#7dd3fc; --danger:#ff7b72; --good:#7ee787;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif}
+  body{display:flex;flex-direction:column;overflow:hidden}
+  header{display:flex;align-items:center;gap:8px;padding:10px 14px;
+    background:var(--panel);border-bottom:1px solid var(--line)}
+  header h1{font-size:16px;margin:0;font-weight:700}
+  header .sp{flex:1}
+  .tabs{display:flex;gap:4px}
+  .tab{padding:6px 12px;border-radius:8px;color:var(--muted);font-size:13px;
+    cursor:pointer;border:1px solid transparent}
+  .tab.active{color:var(--text);background:#0d1117;border-color:var(--line)}
+  main{flex:1;position:relative;overflow:hidden}
+  .view{position:absolute;inset:0;display:none;flex-direction:column}
+  .view.active{display:flex}
+
+  /* ── Capture ── */
+  #camWrap{flex:1;position:relative;background:#000;overflow:hidden}
+  #cam{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+    transform:scaleX(-1)} /* mirror selfie */
+  #guide{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;transition:opacity .3s}
+  #mesh{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+    transform:scaleX(-1);pointer-events:none}
+  #angleReadout{position:absolute;top:10px;left:50%;transform:translateX(-50%);
+    background:rgba(13,17,23,.7);border:1px solid var(--line);border-radius:20px;
+    padding:5px 14px;font-size:13px;color:var(--muted);backdrop-filter:blur(4px)}
+  #angleReadout.match{color:#0d1117;background:var(--good);border-color:var(--good);font-weight:700}
+  #camWrap.match{box-shadow:inset 0 0 0 3px var(--good)}
+  #camMsg{position:absolute;inset:0;display:flex;align-items:center;
+    justify-content:center;text-align:center;color:var(--muted);padding:24px;font-size:14px}
+  .angles{display:flex;justify-content:center;gap:8px;padding:10px;background:var(--panel)}
+  .angle{padding:8px 14px;border-radius:20px;background:#0d1117;border:1px solid var(--line);
+    color:var(--muted);font-size:13px;cursor:pointer}
+  .angle.active{color:#0d1117;background:var(--accent);border-color:var(--accent);font-weight:700}
+  .angle .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-left:6px;
+    background:var(--danger);vertical-align:middle}
+  .angle .dot.done{background:var(--good)}
+  .capbar{display:flex;align-items:center;justify-content:center;gap:18px;
+    padding:14px 14px calc(14px + env(safe-area-inset-bottom));background:var(--panel)}
+  #shoot{width:68px;height:68px;border-radius:50%;background:#fff;border:4px solid var(--accent);cursor:pointer}
+  #shoot:active{transform:scale(.94)}
+  .capbar small{color:var(--muted);font-size:12px}
+
+  /* ── Album ── */
+  #album{flex:1;overflow:auto;padding:12px}
+  .albhead{display:flex;gap:6px;align-items:center;margin-bottom:10px}
+  .albhead .seg{display:flex;gap:4px}
+  .segbtn{padding:5px 10px;border-radius:8px;background:var(--panel);border:1px solid var(--line);
+    color:var(--muted);font-size:12px;cursor:pointer}
+  .segbtn.active{color:var(--text);border-color:var(--accent)}
+  .day{margin-bottom:16px}
+  .day h3{font-size:13px;color:var(--muted);margin:0 0 6px;font-weight:600}
+  .row3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .cell{position:relative;aspect-ratio:3/4;background:var(--panel);border:1px solid var(--line);
+    border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center}
+  .cell img{width:100%;height:100%;object-fit:cover}
+  .cell .lab{position:absolute;left:4px;top:4px;font-size:10px;color:var(--muted);
+    background:rgba(0,0,0,.5);padding:1px 5px;border-radius:6px}
+  .cell.empty{color:var(--line);font-size:11px}
+  .empty-state{color:var(--muted);text-align:center;margin-top:40px;font-size:14px;line-height:1.6}
+
+  /* ── Compare (slider) ── */
+  #compare{flex:1;display:flex;flex-direction:column}
+  #cmpImgWrap{flex:1;background:#000;position:relative;overflow:hidden}
+  #cmpImg{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+  #cmpMeta{position:absolute;left:0;right:0;bottom:0;padding:8px 12px;
+    background:linear-gradient(transparent,rgba(0,0,0,.7));color:#fff;font-size:13px}
+  .cmpctl{padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:var(--panel)}
+  .cmpctl input[type=range]{width:100%;accent-color:var(--accent)}
+  .cmpctl .anglesel{display:flex;gap:6px;justify-content:center;margin-bottom:8px}
+
+  button.link{background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:6px}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;
+    justify-content:center;flex-direction:column;z-index:50;padding:16px}
+  .modal.show{display:flex}
+  .modal img{max-width:100%;max-height:78vh;object-fit:contain;border-radius:10px}
+  .modal .bar{display:flex;gap:14px;margin-top:14px}
+</style>
+</head>
+<body>
+<header>
+  <h1>🪞 SkinLog</h1>
+  <span class="sp"></span>
+  <div class="tabs">
+    <div class="tab active" data-view="capture">촬영</div>
+    <div class="tab" data-view="album">앨범</div>
+    <div class="tab" data-view="compare">비교</div>
+  </div>
+</header>
+
+<main>
+  <!-- Capture -->
+  <section class="view active" id="v-capture">
+    <div id="camWrap">
+      <video id="cam" autoplay playsinline muted></video>
+      <canvas id="mesh"></canvas>
+      <svg id="guide" viewBox="0 0 300 400" preserveAspectRatio="xMidYMid slice"></svg>
+      <div id="angleReadout">얼굴 인식 준비 중…</div>
+      <div id="camMsg">카메라를 시작하려면 아래 ◉ 영역을 탭하거나 권한을 허용하세요…</div>
+    </div>
+    <div class="angles" id="angleSel"></div>
+    <div class="capbar">
+      <small id="capHint">정면을 가이드에 맞춰 촬영</small>
+      <button id="shoot" aria-label="촬영"></button>
+      <small id="capDate"></small>
+    </div>
+  </section>
+
+  <!-- Album -->
+  <section class="view" id="v-album">
+    <div id="album"></div>
+  </section>
+
+  <!-- Compare -->
+  <section class="view" id="v-compare">
+    <div id="compare">
+      <div id="cmpImgWrap">
+        <img id="cmpImg" alt="" />
+        <div id="cmpMeta"></div>
+      </div>
+      <div class="cmpctl">
+        <div class="anglesel" id="cmpAngleSel"></div>
+        <input type="range" id="cmpRange" min="0" max="0" value="0" />
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="modal" id="modal">
+  <img id="modalImg" alt="" />
+  <div class="bar">
+    <button class="link" id="modalClose">닫기</button>
+    <button class="link" id="modalDel" style="color:var(--danger)">삭제</button>
+  </div>
+</div>
+
+<script>
+const ANGLES = [
+  {key:"front", label:"정면"},
+  {key:"left",  label:"좌 45°"},
+  {key:"right", label:"우 45°"},
+];
+const todayStr = () => new Intl.DateTimeFormat("sv-SE",{timeZone:"Asia/Seoul"}).format(new Date()); // YYYY-MM-DD
+let curAngle = "front";
+
+/* ── Face guide overlays (eyes/nose/mouth) per angle ── */
+function guideSVG(angle){
+  // base face oval + brow/eye/nose/mouth marks; shifted for 3/4 views
+  const stroke = `stroke="#7dd3fc" stroke-width="1.6" fill="none" opacity="0.9"`;
+  const soft = `stroke="#7dd3fc" stroke-width="1.2" fill="none" opacity="0.55"`;
+  if(angle==="front"){
+    return `
+      <ellipse cx="150" cy="200" rx="92" ry="120" ${stroke} stroke-dasharray="6 5"/>
+      <line x1="150" y1="92" x2="150" y2="320" ${soft} stroke-dasharray="3 6"/>
+      <ellipse cx="116" cy="178" rx="20" ry="11" ${stroke}/>
+      <ellipse cx="184" cy="178" rx="20" ry="11" ${stroke}/>
+      <path d="M150 188 L150 232 M150 232 q-12 4 -22 0 M150 232 q12 4 22 0" ${stroke}/>
+      <path d="M120 270 q30 22 60 0" ${stroke}/>
+      <path d="M122 158 q-6 -8 -18 -6 M178 158 q6 -8 18 -6" ${soft}/>`;
+  }
+  if(angle==="left"){ // head turned to show LEFT cheek — features clustered toward screen-left, far eye near right edge
+    return `
+      <ellipse cx="150" cy="200" rx="90" ry="118" ${stroke} stroke-dasharray="6 5"/>
+      <path d="M150 96 q-16 70 0 152" ${soft} stroke-dasharray="3 6"/>
+      <path d="M86 162 q22 -11 42 -5" ${soft}/>
+      <path d="M176 162 q14 -8 28 -4" ${soft}/>
+      <ellipse cx="116" cy="180" rx="21" ry="11" ${stroke}/>
+      <ellipse cx="190" cy="179" rx="13" ry="9" ${stroke}/>
+      <path d="M150 192 q-14 28 -2 44 q6 6 16 4" ${stroke}/>
+      <path d="M118 268 q30 20 60 2" ${stroke}/>`;
+  }
+  // right — head turned to show RIGHT cheek (mirror of left across x=150)
+  return `
+      <ellipse cx="150" cy="200" rx="90" ry="118" ${stroke} stroke-dasharray="6 5"/>
+      <path d="M150 96 q16 70 0 152" ${soft} stroke-dasharray="3 6"/>
+      <path d="M214 162 q-22 -11 -42 -5" ${soft}/>
+      <path d="M124 162 q-14 -8 -28 -4" ${soft}/>
+      <ellipse cx="184" cy="180" rx="21" ry="11" ${stroke}/>
+      <ellipse cx="110" cy="179" rx="13" ry="9" ${stroke}/>
+      <path d="M150 192 q14 28 2 44 q-6 6 -16 4" ${stroke}/>
+      <path d="M122 268 q30 20 60 2" ${stroke}/>`;
+}
+function renderGuide(){ document.getElementById("guide").innerHTML = guideSVG(curAngle); }
+
+/* ── IndexedDB ── */
+const DB="skinlog", STORE="shots";
+function db(){return new Promise((res,rej)=>{const r=indexedDB.open(DB,1);
+  r.onupgradeneeded=()=>{const s=r.result.createObjectStore(STORE,{keyPath:"id"});
+    s.createIndex("date","date");s.createIndex("angle","angle");};
+  r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
+async function put(rec){const d=await db();return new Promise((res,rej)=>{
+  const tx=d.transaction(STORE,"readwrite");tx.objectStore(STORE).put(rec);
+  tx.oncomplete=res;tx.onerror=()=>rej(tx.error);});}
+async function all(){const d=await db();return new Promise((res,rej)=>{
+  const out=[];const tx=d.transaction(STORE,"readonly");
+  tx.objectStore(STORE).openCursor().onsuccess=e=>{const c=e.target.result;
+    if(c){out.push(c.value);c.continue();}else res(out);};
+  tx.onerror=()=>rej(tx.error);});}
+async function del(id){const d=await db();return new Promise((res,rej)=>{
+  const tx=d.transaction(STORE,"readwrite");tx.objectStore(STORE).delete(id);
+  tx.oncomplete=res;tx.onerror=()=>rej(tx.error);});}
+
+/* ── Camera ── */
+let stream=null;
+async function startCam(){
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"user",width:{ideal:1280},height:{ideal:1707}},audio:false});
+    const v=document.getElementById("cam"); v.srcObject=stream;
+    document.getElementById("camMsg").style.display="none";
+  }catch(e){
+    document.getElementById("camMsg").textContent="카메라를 열 수 없습니다: "+e.message+
+      "  (HTTPS 또는 localhost 에서, 권한 허용 필요)";
+    document.getElementById("camMsg").style.display="flex";
+  }
+}
+function stopCam(){ if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;} }
+
+async function capture(){
+  const v=document.getElementById("cam");
+  if(!v.videoWidth){ startCam(); return; }
+  const c=document.createElement("canvas");
+  c.width=v.videoWidth; c.height=v.videoHeight;
+  const ctx=c.getContext("2d");
+  ctx.translate(c.width,0); ctx.scale(-1,1); // un-mirror to match what user sees
+  ctx.drawImage(v,0,0,c.width,c.height);
+  const blob=await new Promise(r=>c.toBlob(r,"image/jpeg",0.9));
+  const date=todayStr(), ts=Date.now();
+  await put({id:date+"|"+curAngle, date, angle:curAngle, ts, blob});
+  flash(); await refreshAngleDots();
+}
+function flash(){const w=document.getElementById("camWrap");
+  const f=document.createElement("div");f.style.cssText="position:absolute;inset:0;background:#fff;opacity:.8;transition:opacity .35s";
+  w.appendChild(f);requestAnimationFrame(()=>f.style.opacity="0");setTimeout(()=>f.remove(),400);}
+
+/* ── Angle selector (capture) ── */
+function buildAngles(){
+  const el=document.getElementById("angleSel"); el.innerHTML="";
+  ANGLES.forEach(a=>{
+    const b=document.createElement("div");
+    b.className="angle"+(a.key===curAngle?" active":"");
+    b.innerHTML=`${a.label}<span class="dot" id="dot-${a.key}"></span>`;
+    b.onclick=()=>{curAngle=a.key;buildAngles();renderGuide();updateHint();};
+    el.appendChild(b);
+  });
+}
+function updateHint(){
+  const a=ANGLES.find(x=>x.key===curAngle);
+  document.getElementById("capHint").textContent=`${a.label}을 가이드에 맞춰 촬영`;
+  document.getElementById("capDate").textContent=todayStr();
+}
+async function refreshAngleDots(){
+  const t=todayStr(); const recs=await all();
+  ANGLES.forEach(a=>{const d=document.getElementById("dot-"+a.key);
+    if(d) d.className="dot"+(recs.some(r=>r.date===t&&r.angle===a.key)?" done":"");});
+}
+
+/* ── Album ── */
+let mode="grid"; // grid | compare handled separately
+async function renderAlbum(){
+  const recs=(await all()).sort((a,b)=>b.date.localeCompare(a.date)||a.angle.localeCompare(b.angle));
+  const box=document.getElementById("album");
+  if(!recs.length){box.innerHTML=`<div class="empty-state">아직 기록이 없습니다.<br>‘촬영’ 탭에서 정면·좌·우를 찍어보세요.</div>`;return;}
+  const byDate={}; recs.forEach(r=>{(byDate[r.date]=byDate[r.date]||{})[r.angle]=r;});
+  let html=`<div class="albhead"><strong>일별 기록</strong><span class="sp" style="flex:1"></span>
+    <small style="color:var(--muted)">${Object.keys(byDate).length}일 · ${recs.length}컷</small></div>`;
+  for(const date of Object.keys(byDate).sort((a,b)=>b.localeCompare(a))){
+    html+=`<div class="day"><h3>${date}</h3><div class="row3">`;
+    for(const a of ANGLES){
+      const r=byDate[date][a.key];
+      if(r){ const url=URL.createObjectURL(r.blob);
+        html+=`<div class="cell" data-id="${r.id}"><img src="${url}"/><span class="lab">${a.label}</span></div>`;
+      }else{ html+=`<div class="cell empty">${a.label}<br>—</div>`; }
+    }
+    html+=`</div></div>`;
+  }
+  box.innerHTML=html;
+  box.querySelectorAll(".cell[data-id]").forEach(c=>c.onclick=()=>openModal(c.dataset.id));
+}
+
+/* ── Compare slider ── */
+let cmpAngle="front", cmpList=[];
+async function buildCompare(){
+  const sel=document.getElementById("cmpAngleSel"); sel.innerHTML="";
+  ANGLES.forEach(a=>{const b=document.createElement("div");
+    b.className="angle"+(a.key===cmpAngle?" active":"");
+    b.textContent=a.label;b.onclick=()=>{cmpAngle=a.key;buildCompare();};sel.appendChild(b);});
+  const recs=(await all()).filter(r=>r.angle===cmpAngle).sort((a,b)=>a.date.localeCompare(b.date));
+  cmpList=recs;
+  const range=document.getElementById("cmpRange");
+  range.max=Math.max(0,recs.length-1); range.value=recs.length-1;
+  showCmp(recs.length-1);
+}
+function showCmp(i){
+  const img=document.getElementById("cmpImg"), meta=document.getElementById("cmpMeta");
+  if(!cmpList.length){img.removeAttribute("src");meta.textContent="이 각도의 기록이 없습니다.";return;}
+  const r=cmpList[i]; img.src=URL.createObjectURL(r.blob);
+  meta.textContent=`${r.date} · ${ANGLES.find(a=>a.key===r.angle).label} (${i+1}/${cmpList.length})`;
+}
+
+/* ── Modal (view/delete) ── */
+let modalId=null;
+function openModal(id){modalId=id;
+  all().then(recs=>{const r=recs.find(x=>x.id===id);if(!r)return;
+    document.getElementById("modalImg").src=URL.createObjectURL(r.blob);
+    document.getElementById("modal").classList.add("show");});}
+document.getElementById("modalClose").onclick=()=>document.getElementById("modal").classList.remove("show");
+document.getElementById("modalDel").onclick=async()=>{if(modalId){await del(modalId);
+  document.getElementById("modal").classList.remove("show");renderAlbum();refreshAngleDots();}};
+
+/* ── Tabs ── */
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
+  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+  document.querySelectorAll(".view").forEach(x=>x.classList.remove("active"));
+  t.classList.add("active");
+  const v=t.dataset.view; document.getElementById("v-"+v).classList.add("active");
+  if(v==="capture"){startCam();renderGuide();refreshAngleDots();}
+  else{stopCam();}
+  if(v==="album") renderAlbum();
+  if(v==="compare") buildCompare();
+});
+
+document.getElementById("shoot").onclick=capture;
+document.getElementById("camWrap").onclick=()=>{ if(!stream) startCam(); };
+document.getElementById("cmpRange").oninput=e=>showCmp(+e.target.value);
+
+/* init */
+buildAngles(); renderGuide(); updateHint(); refreshAngleDots(); startCam();
+if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script>
+
+<!-- ── Live 3D face mesh (MediaPipe Face Landmarker). Falls back to the 2D SVG
+     guide if the CDN model can't load (e.g. offline first run). ── -->
+<script type="module">
+const READOUT = document.getElementById("angleReadout");
+const CAMWRAP = document.getElementById("camWrap");
+const video = document.getElementById("cam");
+const canvas = document.getElementById("mesh");
+const ctx = canvas.getContext("2d");
+const CDN = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.20";
+
+let landmarker=null, lastVideoTs=-1, matchFrames=0;
+function conn(lm,set,color,lw){ if(!set)return; ctx.strokeStyle=color;ctx.lineWidth=lw;ctx.beginPath();
+  for(const c of set){const a=lm[c.start],b=lm[c.end];if(!a||!b)continue;ctx.moveTo(a.x*canvas.width,a.y*canvas.height);ctx.lineTo(b.x*canvas.width,b.y*canvas.height);} ctx.stroke(); }
+
+async function initMesh(){
+  try{
+    const { FaceLandmarker, FilesetResolver } = await import(`${CDN}/vision_bundle.mjs`);
+    const fileset = await FilesetResolver.forVisionTasks(`${CDN}/wasm`);
+    const MODEL="https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
+    const opts=(delegate)=>({ baseOptions:{ modelAssetPath:MODEL, delegate }, runningMode:"VIDEO", numFaces:1, outputFaceBlendshapes:false, outputFacialTransformationMatrixes:false });
+    try{
+      landmarker = await FaceLandmarker.createFromOptions(fileset, opts("GPU"));
+    }catch(gpuErr){
+      console.warn("GPU delegate failed, retrying on CPU:", gpuErr);
+      landmarker = await FaceLandmarker.createFromOptions(fileset, opts("CPU"));
+    }
+    window.__FLM = FaceLandmarker; // expose connector sets
+    document.getElementById("guide").style.opacity = "0.18"; // dim static target; mesh leads
+    READOUT.textContent = "얼굴을 화면에 맞춰주세요";
+    requestAnimationFrame(loop);
+  }catch(e){
+    console.warn("FaceMesh load failed -> 2D guide fallback:", e);
+    READOUT.style.display = "none";
+    document.getElementById("guide").style.opacity = "1";
+  }
+}
+
+function detectAngle(lm){
+  // ratio of nose-tip horizontal position between the two face-oval cheek points.
+  // ~0.5 = front; shifts toward a cheek as the head turns. (Mirror-display safe:
+  // computed in raw landmark space.)
+  const nose=lm[1], L=lm[234], R=lm[454];
+  const r=(nose.x - L.x)/((R.x - L.x)||1e-6);
+  if(Math.abs(r-0.5) < 0.10) return "front";
+  return r < 0.5 ? "left" : "right";   // flip here if a peer reports reversed
+}
+
+function loop(){
+  if(!landmarker){ return; }
+  if(video.videoWidth && video.currentTime !== lastVideoTs){
+    lastVideoTs = video.currentTime;
+    if(canvas.width !== video.videoWidth){ canvas.width=video.videoWidth; canvas.height=video.videoHeight; }
+    let res=null;
+    try{ res = landmarker.detectForVideo(video, performance.now()); }catch(_){}
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    if(res && res.faceLandmarks && res.faceLandmarks.length){
+      const lm=res.faceLandmarks[0];
+      const F=window.__FLM;
+      conn(lm, F.FACE_LANDMARKS_TESSELATION, "rgba(125,211,252,0.28)", 1);
+      conn(lm, F.FACE_LANDMARKS_FACE_OVAL,  "#7dd3fc", 2);
+      conn(lm, F.FACE_LANDMARKS_LEFT_EYE,   "#7dd3fc", 2);
+      conn(lm, F.FACE_LANDMARKS_RIGHT_EYE,  "#7dd3fc", 2);
+      conn(lm, F.FACE_LANDMARKS_LIPS,       "#7dd3fc", 2);
+      conn(lm, F.FACE_LANDMARKS_LEFT_IRIS,  "#7ee787", 2);
+      conn(lm, F.FACE_LANDMARKS_RIGHT_IRIS, "#7ee787", 2);
+
+      const det=detectAngle(lm);
+      const want=window.curAngle;
+      const label={front:"정면",left:"좌 45°",right:"우 45°"};
+      const ok = det===want;
+      READOUT.textContent = ok ? `${label[want]} ✓ 좋아요` : `현재: ${label[det]} → ${label[want]}로 맞춰주세요`;
+      READOUT.classList.toggle("match", ok);
+      CAMWRAP.classList.toggle("match", ok);
+      matchFrames = ok ? matchFrames+1 : 0;
+    }else{
+      READOUT.textContent="얼굴을 화면에 맞춰주세요";
+      READOUT.classList.remove("match"); CAMWRAP.classList.remove("match"); matchFrames=0;
+    }
+  }
+  requestAnimationFrame(loop);
+}
+initMesh();
+</script>
+</body>
+</html>
