@@ -385,25 +385,24 @@ async function initMesh(){
 }
 
 const ANGLE_FLIP = false;  // set true if left/right come out reversed
-const FRONT_MAX = 15;      // |yaw| <= this -> front
-const SIDE_MIN  = 25;      // |yaw| >= this -> counts as a 45° side turn
+const FRONT_MAX = 16;      // |turn°| <= this  -> front  (넉넉하게)
+const SIDE_MIN  = 28;      // |turn°| >= this  -> 45° 측면으로 인정 (정확히 45 아니어도 OK)
 
-function yawDeg(mtx){
-  // head yaw (left/right rotation) in degrees from the 4x4 column-major matrix
-  if(!mtx) return null;
-  const m=mtx.data || mtx;
-  return Math.atan2(m[8], m[10]) * 180 / Math.PI;
+function turnDeg(lm){
+  // 좌/우 뺨~코 수평거리의 비대칭. 정면=0, 돌릴수록 ±. 대략 도(°)로 환산.
+  const nose=lm[1], L=lm[234], R=lm[454];
+  const dL=nose.x - L.x, dR=R.x - nose.x;
+  const metric=(dR - dL)/((dR + dL)||1e-6);  // 0 정면, ±1 극단
+  return metric * 90;                          // ≈ degrees
 }
-function detectAngle(yaw){
-  // returns [label, yawDegrees]. 0° front, ±45° sides.
-  if(yaw==null) return ["front", 0];
-  const a=Math.abs(yaw);
+function detectAngle(lm){
+  const t=turnDeg(lm), a=Math.abs(t);
   let label;
   if(a <= FRONT_MAX) label="front";
-  else if(a >= SIDE_MIN) label = (yaw > 0 ? "left" : "right");
-  else label = "between";  // in the 15~25° dead-zone: not front, not a clean side yet
+  else if(a >= SIDE_MIN) label = (t > 0 ? "right" : "left");
+  else label = "between";   // 16~28° 사이: 정면도 측면도 아닌 전환 구간
   if(ANGLE_FLIP && (label==="left"||label==="right")) label = label==="left"?"right":"left";
-  return [label, yaw];
+  return [label, t];
 }
 
 function loop(){
@@ -418,8 +417,7 @@ function loop(){
       const lm=res.faceLandmarks[0];
       const F=window.__FLM;
       // decide match FIRST so the mesh itself reflects alignment
-      const yaw = yawDeg(res.facialTransformationMatrixes && res.facialTransformationMatrixes[0]);
-      const [det, yv]=detectAngle(yaw);
+      const [det, yv]=detectAngle(lm);
       const want=window.curAngle;
       const label={front:"정면",left:"좌 45°",right:"우 45°",between:"기울이는 중"};
       const ok = det===want;
