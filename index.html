@@ -231,19 +231,25 @@ function stopCam(){ if(stream){stream.getTracks().forEach(t=>t.stop());stream=nu
 async function capture(){
   const v=document.getElementById("cam");
   if(!v.videoWidth){ startCam(); return; }
+  flash(); // instant feedback the moment the shutter is pressed
   const c=document.createElement("canvas");
   c.width=v.videoWidth; c.height=v.videoHeight;
-  const ctx=c.getContext("2d");
-  ctx.translate(c.width,0); ctx.scale(-1,1); // un-mirror to match what user sees
-  ctx.drawImage(v,0,0,c.width,c.height);
+  const cx=c.getContext("2d");
+  cx.translate(c.width,0); cx.scale(-1,1); // un-mirror to match what user sees
+  cx.drawImage(v,0,0,c.width,c.height);
   const blob=await new Promise(r=>c.toBlob(r,"image/jpeg",0.9));
   const date=todayStr(), ts=Date.now();
   await put({id:date+"|"+curAngle, date, angle:curAngle, ts, blob});
-  flash(); await refreshAngleDots();
+  await refreshAngleDots();
 }
-function flash(){const w=document.getElementById("camWrap");
-  const f=document.createElement("div");f.style.cssText="position:absolute;inset:0;background:#fff;opacity:.8;transition:opacity .35s";
-  w.appendChild(f);requestAnimationFrame(()=>f.style.opacity="0");setTimeout(()=>f.remove(),400);}
+function flash(){
+  const f=document.createElement("div");
+  f.style.cssText="position:fixed;inset:0;background:#fff;opacity:1;z-index:9999;pointer-events:none;transition:opacity .45s ease-out";
+  document.body.appendChild(f);
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{ f.style.opacity="0"; }));
+  setTimeout(()=>f.remove(),500);
+  try{ navigator.vibrate && navigator.vibrate(40); }catch(_){}
+}
 
 /* ── Angle selector (capture) ── */
 function buildAngles(){
@@ -378,14 +384,17 @@ async function initMesh(){
   }
 }
 
+const ANGLE_FLIP = false; // set true if left/right come out reversed
 function detectAngle(lm){
-  // ratio of nose-tip horizontal position between the two face-oval cheek points.
-  // ~0.5 = front; shifts toward a cheek as the head turns. (Mirror-display safe:
-  // computed in raw landmark space.)
+  // nose-tip horizontal position between the two cheek points: ~0.5 = front,
+  // shifts toward a cheek as the head turns. Returns [label, r] for calibration.
   const nose=lm[1], L=lm[234], R=lm[454];
   const r=(nose.x - L.x)/((R.x - L.x)||1e-6);
-  if(Math.abs(r-0.5) < 0.10) return "front";
-  return r < 0.5 ? "left" : "right";   // flip here if a peer reports reversed
+  let label;
+  if(Math.abs(r-0.5) < 0.14) label="front";          // wider front band
+  else label = (r < 0.5 ? "left" : "right");
+  if(ANGLE_FLIP && label!=="front") label = label==="left" ? "right" : "left";
+  return [label, r];
 }
 
 function loop(){
@@ -400,7 +409,7 @@ function loop(){
       const lm=res.faceLandmarks[0];
       const F=window.__FLM;
       // decide match FIRST so the mesh itself reflects alignment
-      const det=detectAngle(lm);
+      const [det, rval]=detectAngle(lm);
       const want=window.curAngle;
       const label={front:"정면",left:"좌 45°",right:"우 45°"};
       const ok = det===want;
@@ -419,7 +428,7 @@ function loop(){
       conn(lm, F.FACE_LANDMARKS_RIGHT_IRIS, ok?"#ffffff":"#7ee787", lw);
       ctx.restore();
 
-      READOUT.textContent = ok ? `${label[want]} ✓ 좋아요 — 촬영하세요` : `현재: ${label[det]} → ${label[want]}로 맞춰주세요`;
+      READOUT.textContent = ok ? `${label[want]} ✓ 좋아요 — 촬영하세요` : `현재: ${label[det]} (${rval.toFixed(2)}) → ${label[want]}로 맞춰주세요`;
       READOUT.classList.toggle("match", ok);
       CAMWRAP.classList.toggle("match", ok);
       matchFrames = ok ? matchFrames+1 : 0;

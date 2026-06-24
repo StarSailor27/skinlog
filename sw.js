@@ -1,7 +1,7 @@
 /* SkinLog service worker — app-shell cache for offline. Photos live in
    IndexedDB, never here. Network-first for same-origin GETs so the latest code
    always loads when online; cache is the offline fallback. Bump CACHE to purge. */
-const CACHE = "skinlog-v3";
+const CACHE = "skinlog-v4";
 const SHELL = ["./", "./index.html", "./manifest.json", "./icon.svg"];
 
 self.addEventListener("install", (e) => {
