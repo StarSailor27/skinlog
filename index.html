@@ -399,19 +399,27 @@ function loop(){
     if(res && res.faceLandmarks && res.faceLandmarks.length){
       const lm=res.faceLandmarks[0];
       const F=window.__FLM;
-      conn(lm, F.FACE_LANDMARKS_TESSELATION, "rgba(125,211,252,0.28)", 1);
-      conn(lm, F.FACE_LANDMARKS_FACE_OVAL,  "#7dd3fc", 2);
-      conn(lm, F.FACE_LANDMARKS_LEFT_EYE,   "#7dd3fc", 2);
-      conn(lm, F.FACE_LANDMARKS_RIGHT_EYE,  "#7dd3fc", 2);
-      conn(lm, F.FACE_LANDMARKS_LIPS,       "#7dd3fc", 2);
-      conn(lm, F.FACE_LANDMARKS_LEFT_IRIS,  "#7ee787", 2);
-      conn(lm, F.FACE_LANDMARKS_RIGHT_IRIS, "#7ee787", 2);
-
+      // decide match FIRST so the mesh itself reflects alignment
       const det=detectAngle(lm);
       const want=window.curAngle;
       const label={front:"정면",left:"좌 45°",right:"우 45°"};
       const ok = det===want;
-      READOUT.textContent = ok ? `${label[want]} ✓ 좋아요` : `현재: ${label[det]} → ${label[want]}로 맞춰주세요`;
+      // matched → thicker + green + glow; not matched → thin blue
+      const tess = ok ? "rgba(126,231,135,0.5)"  : "rgba(125,211,252,0.28)";
+      const line = ok ? "#7ee787" : "#7dd3fc";
+      const lw   = ok ? 3 : 2;
+      ctx.save();
+      if(ok){ ctx.shadowColor="#7ee787"; ctx.shadowBlur=8; }
+      conn(lm, F.FACE_LANDMARKS_TESSELATION, tess, ok?1.4:1);
+      conn(lm, F.FACE_LANDMARKS_FACE_OVAL,  line, lw);
+      conn(lm, F.FACE_LANDMARKS_LEFT_EYE,   line, lw);
+      conn(lm, F.FACE_LANDMARKS_RIGHT_EYE,  line, lw);
+      conn(lm, F.FACE_LANDMARKS_LIPS,       line, lw);
+      conn(lm, F.FACE_LANDMARKS_LEFT_IRIS,  ok?"#ffffff":"#7ee787", lw);
+      conn(lm, F.FACE_LANDMARKS_RIGHT_IRIS, ok?"#ffffff":"#7ee787", lw);
+      ctx.restore();
+
+      READOUT.textContent = ok ? `${label[want]} ✓ 좋아요 — 촬영하세요` : `현재: ${label[det]} → ${label[want]}로 맞춰주세요`;
       READOUT.classList.toggle("match", ok);
       CAMWRAP.classList.toggle("match", ok);
       matchFrames = ok ? matchFrames+1 : 0;
