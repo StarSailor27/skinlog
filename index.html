@@ -155,6 +155,7 @@ const ANGLES = [
 ];
 const todayStr = () => new Intl.DateTimeFormat("sv-SE",{timeZone:"Asia/Seoul"}).format(new Date()); // YYYY-MM-DD
 let curAngle = "front";
+window.curAngle = curAngle;   // expose to the mesh module (a classic `let` is NOT a window prop)
 
 /* ── Face guide overlays (eyes/nose/mouth) per angle ── */
 function guideSVG(angle){
@@ -258,7 +259,7 @@ function buildAngles(){
     const b=document.createElement("div");
     b.className="angle"+(a.key===curAngle?" active":"");
     b.innerHTML=`${a.label}<span class="dot" id="dot-${a.key}"></span>`;
-    b.onclick=()=>{curAngle=a.key;buildAngles();renderGuide();updateHint();};
+    b.onclick=()=>{curAngle=a.key;window.curAngle=a.key;buildAngles();renderGuide();updateHint();};
     el.appendChild(b);
   });
 }
