@@ -366,7 +366,7 @@ async function initMesh(){
     const { FaceLandmarker, FilesetResolver } = await import(`${CDN}/vision_bundle.mjs`);
     const fileset = await FilesetResolver.forVisionTasks(`${CDN}/wasm`);
     const MODEL="https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
-    const opts=(delegate)=>({ baseOptions:{ modelAssetPath:MODEL, delegate }, runningMode:"VIDEO", numFaces:1, outputFaceBlendshapes:false, outputFacialTransformationMatrixes:false });
+    const opts=(delegate)=>({ baseOptions:{ modelAssetPath:MODEL, delegate }, runningMode:"VIDEO", numFaces:1, outputFaceBlendshapes:false, outputFacialTransformationMatrixes:true });
     try{
       landmarker = await FaceLandmarker.createFromOptions(fileset, opts("GPU"));
     }catch(gpuErr){
@@ -384,17 +384,26 @@ async function initMesh(){
   }
 }
 
-const ANGLE_FLIP = false; // set true if left/right come out reversed
-function detectAngle(lm){
-  // nose-tip horizontal position between the two cheek points: ~0.5 = front,
-  // shifts toward a cheek as the head turns. Returns [label, r] for calibration.
-  const nose=lm[1], L=lm[234], R=lm[454];
-  const r=(nose.x - L.x)/((R.x - L.x)||1e-6);
+const ANGLE_FLIP = false;  // set true if left/right come out reversed
+const FRONT_MAX = 15;      // |yaw| <= this -> front
+const SIDE_MIN  = 25;      // |yaw| >= this -> counts as a 45° side turn
+
+function yawDeg(mtx){
+  // head yaw (left/right rotation) in degrees from the 4x4 column-major matrix
+  if(!mtx) return null;
+  const m=mtx.data || mtx;
+  return Math.atan2(m[8], m[10]) * 180 / Math.PI;
+}
+function detectAngle(yaw){
+  // returns [label, yawDegrees]. 0° front, ±45° sides.
+  if(yaw==null) return ["front", 0];
+  const a=Math.abs(yaw);
   let label;
-  if(Math.abs(r-0.5) < 0.14) label="front";          // wider front band
-  else label = (r < 0.5 ? "left" : "right");
-  if(ANGLE_FLIP && label!=="front") label = label==="left" ? "right" : "left";
-  return [label, r];
+  if(a <= FRONT_MAX) label="front";
+  else if(a >= SIDE_MIN) label = (yaw > 0 ? "left" : "right");
+  else label = "between";  // in the 15~25° dead-zone: not front, not a clean side yet
+  if(ANGLE_FLIP && (label==="left"||label==="right")) label = label==="left"?"right":"left";
+  return [label, yaw];
 }
 
 function loop(){
@@ -409,9 +418,10 @@ function loop(){
       const lm=res.faceLandmarks[0];
       const F=window.__FLM;
       // decide match FIRST so the mesh itself reflects alignment
-      const [det, rval]=detectAngle(lm);
+      const yaw = yawDeg(res.facialTransformationMatrixes && res.facialTransformationMatrixes[0]);
+      const [det, yv]=detectAngle(yaw);
       const want=window.curAngle;
-      const label={front:"정면",left:"좌 45°",right:"우 45°"};
+      const label={front:"정면",left:"좌 45°",right:"우 45°",between:"기울이는 중"};
       const ok = det===want;
       // matched → thicker + green + glow; not matched → thin blue
       const tess = ok ? "rgba(126,231,135,0.5)"  : "rgba(125,211,252,0.28)";
@@ -428,7 +438,7 @@ function loop(){
       conn(lm, F.FACE_LANDMARKS_RIGHT_IRIS, ok?"#ffffff":"#7ee787", lw);
       ctx.restore();
 
-      READOUT.textContent = ok ? `${label[want]} ✓ 좋아요 — 촬영하세요` : `현재: ${label[det]} (${rval.toFixed(2)}) → ${label[want]}로 맞춰주세요`;
+      READOUT.textContent = ok ? `${label[want]} ✓ 좋아요 — 촬영하세요` : `현재 ${yv.toFixed(0)}° → ${label[want]}로 맞춰주세요`;
       READOUT.classList.toggle("match", ok);
       CAMWRAP.classList.toggle("match", ok);
       matchFrames = ok ? matchFrames+1 : 0;
