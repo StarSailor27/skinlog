@@ -245,6 +245,7 @@ async function capture(){
     cx.translate(c.width,0); cx.scale(-1,1); // un-mirror to match what user sees
     cx.drawImage(v,0,0,c.width,c.height);
     const blob=await new Promise(r=>c.toBlob(r,"image/jpeg",0.9));
+    if(!blob) return;   // toBlob can yield null — never store a corrupt record
     await put({id:date+"|"+angle, date, angle, ts, blob});
     await refreshAngleDots();
   } finally { capturing=false; }
@@ -300,7 +301,7 @@ async function renderAlbum(){
     html+=`</div></div>`;
   }
   box.innerHTML=html;
-  box.querySelectorAll(".cell[data-id]").forEach(c=>c.onclick=()=>openModal(c.dataset.id));
+  box.querySelectorAll(".cell[data-id]").forEach(c=>c.onclick=()=>openModal(c.dataset.id, c.querySelector("img")?.getAttribute("src")));
 }
 
 /* ── Compare slider ── */
@@ -327,12 +328,18 @@ function showCmp(i){
 let modalId=null;
 function modalOpen(){ return document.getElementById("modal").classList.contains("show"); }
 function closeModalUI(){ document.getElementById("modal").classList.remove("show"); modalId=null; }
-function openModal(id){modalId=id;
-  all().then(recs=>{const r=recs.find(x=>x.id===id);if(!r)return;
-    document.getElementById("modalImg").src=URL.createObjectURL(r.blob);
-    document.getElementById("modal").classList.add("show");
-    history.pushState({modal:true}, "");   // so hardware/gesture BACK closes the photo
-  });}
+function showModalWith(id, src){
+  modalId=id;
+  document.getElementById("modalImg").src=src;
+  document.getElementById("modal").classList.add("show");
+  history.pushState({modal:true}, "");   // so hardware/gesture BACK closes the photo
+}
+function openModal(id, src){
+  if(modalOpen()) return;                 // guard: no double-open / double history push
+  if(src){ showModalWith(id, src); return; }   // reuse the album thumbnail's URL (sync, no race)
+  all().then(recs=>{const r=recs.find(x=>x.id===id); if(!r||modalOpen()) return;
+    showModalWith(id, URL.createObjectURL(r.blob));});
+}
 document.getElementById("modalClose").onclick=()=>{ if(modalOpen()) history.back(); };
 document.getElementById("modalDel").onclick=async()=>{if(modalId){const id=modalId; await del(id);
   if(modalOpen()) history.back(); renderAlbum(); refreshAngleDots();}};
