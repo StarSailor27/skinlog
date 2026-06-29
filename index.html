@@ -229,19 +229,25 @@ async function startCam(){
 }
 function stopCam(){ if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;} }
 
+let capturing=false;
 async function capture(){
   const v=document.getElementById("cam");
   if(!v.videoWidth){ startCam(); return; }
-  flash(); // instant feedback the moment the shutter is pressed
-  const c=document.createElement("canvas");
-  c.width=v.videoWidth; c.height=v.videoHeight;
-  const cx=c.getContext("2d");
-  cx.translate(c.width,0); cx.scale(-1,1); // un-mirror to match what user sees
-  cx.drawImage(v,0,0,c.width,c.height);
-  const blob=await new Promise(r=>c.toBlob(r,"image/jpeg",0.9));
+  if(capturing) return;            // ignore double-taps mid-capture
+  capturing=true;
+  const angle=curAngle;            // SNAPSHOT now — don't re-read after awaits
   const date=todayStr(), ts=Date.now();
-  await put({id:date+"|"+curAngle, date, angle:curAngle, ts, blob});
-  await refreshAngleDots();
+  flash(); // instant feedback the moment the shutter is pressed
+  try{
+    const c=document.createElement("canvas");
+    c.width=v.videoWidth; c.height=v.videoHeight;
+    const cx=c.getContext("2d");
+    cx.translate(c.width,0); cx.scale(-1,1); // un-mirror to match what user sees
+    cx.drawImage(v,0,0,c.width,c.height);
+    const blob=await new Promise(r=>c.toBlob(r,"image/jpeg",0.9));
+    await put({id:date+"|"+angle, date, angle, ts, blob});
+    await refreshAngleDots();
+  } finally { capturing=false; }
 }
 function flash(){
   const f=document.createElement("div");
@@ -319,25 +325,41 @@ function showCmp(i){
 
 /* ── Modal (view/delete) ── */
 let modalId=null;
+function modalOpen(){ return document.getElementById("modal").classList.contains("show"); }
+function closeModalUI(){ document.getElementById("modal").classList.remove("show"); modalId=null; }
 function openModal(id){modalId=id;
   all().then(recs=>{const r=recs.find(x=>x.id===id);if(!r)return;
     document.getElementById("modalImg").src=URL.createObjectURL(r.blob);
-    document.getElementById("modal").classList.add("show");});}
-document.getElementById("modalClose").onclick=()=>document.getElementById("modal").classList.remove("show");
-document.getElementById("modalDel").onclick=async()=>{if(modalId){await del(modalId);
-  document.getElementById("modal").classList.remove("show");renderAlbum();refreshAngleDots();}};
+    document.getElementById("modal").classList.add("show");
+    history.pushState({modal:true}, "");   // so hardware/gesture BACK closes the photo
+  });}
+document.getElementById("modalClose").onclick=()=>{ if(modalOpen()) history.back(); };
+document.getElementById("modalDel").onclick=async()=>{if(modalId){const id=modalId; await del(id);
+  if(modalOpen()) history.back(); renderAlbum(); refreshAngleDots();}};
 
-/* ── Tabs ── */
-document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
-  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+/* ── Tabs + history-based navigation ── */
+let curView="capture";
+function switchTab(v){
+  document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active", x.dataset.view===v));
   document.querySelectorAll(".view").forEach(x=>x.classList.remove("active"));
-  t.classList.add("active");
-  const v=t.dataset.view; document.getElementById("v-"+v).classList.add("active");
-  if(v==="capture"){startCam();renderGuide();refreshAngleDots();}
-  else{stopCam();}
+  document.getElementById("v-"+v).classList.add("active");
+  if(v==="capture"){startCam();renderGuide();refreshAngleDots();} else {stopCam();}
   if(v==="album") renderAlbum();
   if(v==="compare") buildCompare();
+  curView=v;
+}
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
+  const v=t.dataset.view; if(v===curView) return;
+  history.pushState({view:v}, "");
+  switchTab(v);
 });
+// BACK: close the photo first, else step back to the previous tab (default capture),
+// instead of exiting the app on the first press.
+window.addEventListener("popstate", (e)=>{
+  if(modalOpen()){ closeModalUI(); return; }
+  switchTab((e.state && e.state.view) || "capture");
+});
+history.replaceState({view:"capture"}, "");
 
 document.getElementById("shoot").onclick=capture;
 document.getElementById("camWrap").onclick=()=>{ if(!stream) startCam(); };
